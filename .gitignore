@@ -1,0 +1,70 @@
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Python Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Python Caches and Compilations
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+.eggs/
+.pytest_cache/
+
+# Build and Distribution Artifacts
+dist/
+build/
+frontend-web/dist/
+frontend-web/node_modules/
+node_modules/
+
+# Database Files and SQLite WAL/SHM
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+*.db-journal
+
+# ML Model Artifacts & Heavy Weights
+models/saved/*.pkl
+models/saved/*.joblib
+models/finbert_weights/*.safetensors
+models/finbert_weights/*.bin
+models/finbert_weights/*.pt
+models/finbert_weights/*.onnx
+
+# Local Backups & Temporary Scripts
+backup_*/
+*.bak
+*.tmp
+capture_overhaul.js
+
+# IDE and OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs and Reports
+*.log
+logs/
+reports/*.csv
+reports/*.html
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Hugging Face cache
+.cache/

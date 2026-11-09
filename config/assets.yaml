@@ -1,0 +1,84 @@
+# SENTINEL AI - Asset Configuration
+# Modify this file to track different assets
+
+exchanges:
+  HKEX:
+    name: "Hong Kong Stock Exchange"
+    timezone: "Asia/Hong_Kong"
+    currency: "HKD"
+    trading_hours:
+      open: "09:30"
+      close: "16:00"
+    assets:
+      - ticker: "0700.HK"
+        name: "Tencent Holdings"
+        sector: "Technology"
+        search_terms: ["Tencent", "0700.HK", "腾讯"]
+      - ticker: "9988.HK"
+        name: "Alibaba Group"
+        sector: "Technology"
+        search_terms: ["Alibaba", "9988.HK", "BABA", "阿里巴巴"]
+      - ticker: "1299.HK"
+        name: "AIA Group"
+        sector: "Insurance"
+        search_terms: ["AIA Group", "1299.HK", "AIA"]
+      - ticker: "0005.HK"
+        name: "HSBC Holdings"
+        sector: "Banking"
+        search_terms: ["HSBC", "0005.HK", "汇丰"]
+      - ticker: "3690.HK"
+        name: "Meituan"
+        sector: "Technology"
+        search_terms: ["Meituan", "3690.HK", "美团"]
+
+  KRX:
+    name: "Korea Exchange"
+    timezone: "Asia/Seoul"
+    currency: "KRW"
+    trading_hours:
+      open: "09:00"
+      close: "15:30"
+    assets:
+      - ticker: "005930.KS"
+        name: "Samsung Electronics"
+        sector: "Technology"
+        search_terms: ["Samsung Electronics", "005930", "삼성전자"]
+      - ticker: "000660.KS"
+        name: "SK Hynix"
+        sector: "Semiconductors"
+        search_terms: ["SK Hynix", "000660", "SK하이닉스"]
+      - ticker: "373220.KS"
+        name: "LG Energy Solution"
+        sector: "Batteries"
+        search_terms: ["LG Energy Solution", "373220", "LG에너지솔루션"]
+      - ticker: "005380.KS"
+        name: "Hyundai Motor"
+        sector: "Automotive"
+        search_terms: ["Hyundai Motor", "005380", "현대자동차"]
+      - ticker: "035420.KS"
+        name: "Naver Corp"
+        sector: "Internet"
+        search_terms: ["Naver", "035420", "네이버"]
+
+# Data collection settings
+collection:
+  social_lookback_days: 10
+  market_history_months: 6
+  max_posts_per_source: 100
+  max_news_per_ticker: 50
+
+# Sentiment settings
+sentiment:
+  model: "ProsusAI/finbert"
+  max_post_weight_pct: 5.0
+  batch_size: 32
+
+# ML settings
+ml:
+  test_size_pct: 20
+  validation_size_pct: 15
+  walk_forward_windows: 5
+  models:
+    - "linear_regression"
+    - "random_forest"
+    - "xgboost"

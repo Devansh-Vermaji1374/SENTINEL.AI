@@ -1,0 +1,131 @@
+/* SENTINEL AI - Institutional Dark Financial Dashboard Theme */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+    --bg-primary: #0a0e17;
+    --bg-secondary: #0f1624;
+    --bg-card: #141d2e;
+    --bg-card-hover: #1a263d;
+    --border-color: #1f2d42;
+    --border-subtle: #192333;
+    --text-primary: #f3f4f6;
+    --text-secondary: #9ca3af;
+    --text-muted: #6b7280;
+    --bullish-green: #00e676;
+    --bullish-bg: rgba(0, 230, 118, 0.12);
+    --bearish-red: #ff3d57;
+    --bearish-bg: rgba(255, 61, 87, 0.12);
+    --neutral-blue: #00b0ff;
+    --neutral-bg: rgba(0, 176, 255, 0.12);
+    --accent-gold: #ffd600;
+}
+
+/* Hide Streamlit default chrome & footer */
+#MainMenu { visibility: hidden !important; }
+footer { visibility: hidden !important; }
+header[data-testid="stHeader"] {
+    background: transparent !important;
+}
+
+body, [data-testid="stAppViewContainer"] {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+[data-testid="stSidebar"] {
+    background-color: var(--bg-secondary) !important;
+    border-right: 1px solid var(--border-color);
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+    color: var(--text-secondary);
+}
+
+.stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {
+    color: #ffffff;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+/* Metric Cards */
+.sentinel-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 1.15rem 1.25rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    transition: all 0.2s ease-in-out;
+}
+.sentinel-card:hover {
+    border-color: #2d4263;
+    background: var(--bg-card-hover);
+}
+
+/* Terminal Pill Tags */
+.tag-bullish {
+    background: var(--bullish-bg);
+    color: var(--bullish-green);
+    border: 1px solid var(--bullish-green);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.72rem;
+    font-family: 'JetBrains Mono', monospace;
+    display: inline-block;
+}
+.tag-bearish {
+    background: var(--bearish-bg);
+    color: var(--bearish-red);
+    border: 1px solid var(--bearish-red);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.72rem;
+    font-family: 'JetBrains Mono', monospace;
+    display: inline-block;
+}
+.tag-neutral {
+    background: var(--neutral-bg);
+    color: var(--neutral-blue);
+    border: 1px solid var(--neutral-blue);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.72rem;
+    font-family: 'JetBrains Mono', monospace;
+    display: inline-block;
+}
+.tag-demo {
+    background: rgba(255, 214, 0, 0.12);
+    color: var(--accent-gold);
+    border: 1px solid var(--accent-gold);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.72rem;
+    font-family: 'JetBrains Mono', monospace;
+    display: inline-block;
+}
+
+/* Ticker Monospace styling */
+.ticker-symbol {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+}
+
+/* Bloomberg Institutional Top Bar */
+.bloomberg-bar {
+    background-color: #070a10;
+    border-left: 3px solid #00b0ff;
+    border-bottom: 1px solid var(--border-color);
+    padding: 10px 18px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    border-radius: 0 4px 4px 0;
+}
