@@ -123,6 +123,11 @@ class Settings(BaseSettings):
     apify_api_token: str = ""
     exa_api_key: str = ""
     market_data_api_key: str = ""
+    automation_api_key: str = ""
+    dashboard_admin_key: str = ""
+
+    # --- Security & CORS ---
+    cors_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8501,http://127.0.0.1:8501,http://localhost:3000,http://127.0.0.1:3000"
 
     # --- Application settings ---
     app_env: str = "development"

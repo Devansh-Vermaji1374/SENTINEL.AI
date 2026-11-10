@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  sentinel-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: sentinel-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=production
+      - DATABASE_URL=sqlite:///./sentinel.db
+      - APIFY_API_TOKEN=${APIFY_API_TOKEN:-}
+      - EXA_API_KEY=${EXA_API_KEY:-}
+      - AUTOMATION_API_KEY=${AUTOMATION_API_KEY}
+    volumes:
+      - ./sentinel.db:/app/sentinel.db
+      - ./models/saved:/app/models/saved
+      - ./models/finbert_weights:/app/models/finbert_weights
+    networks:
+      - sentinel-net
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: sentinel-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=Asia/Hong_Kong
+      - SENTINEL_AUTOMATION_KEY=${AUTOMATION_API_KEY}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows/n8n:/workflows:ro
+    networks:
+      - sentinel-net
+    depends_on:
+      - sentinel-backend
+
+networks:
+  sentinel-net:
+    driver: bridge
+
+volumes:
+  n8n_data:

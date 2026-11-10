@@ -90,6 +90,7 @@ class PredictionSchema(BaseModel):
     target_date: Optional[datetime] = None
     settled_at: Optional[datetime] = None
     horizon_days: int = 1
+    status: Optional[str] = "ACTIVE"
 
 class AssetSignalSchema(BaseModel):
     ticker: str

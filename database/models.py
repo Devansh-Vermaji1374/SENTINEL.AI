@@ -111,8 +111,8 @@ class SocialPost(Base):
     platform: Mapped[str] = mapped_column(String(50), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     author: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    timestamp: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
+    timestamp: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     likes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     reposts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -291,6 +291,9 @@ class Prediction(Base):
         DateTime(timezone=True), nullable=False
     )
     horizon_days: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(50), default="PENDING_SETTLEMENT", nullable=False
+    )
     origin_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     predicted_price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     predicted_return: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

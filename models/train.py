@@ -61,7 +61,14 @@ class ModelTrainer:
                 raise ValueError("DataFrame must contain 'close' or specified target_col")
 
         if feature_cols is None:
-            exclude_cols = {"date", "ticker", "id", "created_at", target_col}
+            # Exclude non-stationary raw price levels, volume scales, unnormalized indicators, and identifiers
+            exclude_cols = {
+                "date", "ticker", "id", "created_at", target_col,
+                "open", "high", "low", "close", "adjusted_close",
+                "sma_5", "sma_10", "sma_20", "sma_50", "ema_12", "ema_26",
+                "bb_middle", "bb_upper", "bb_lower", "volume", "volume_sma_20",
+                "macd", "macd_signal", "macd_histogram"  # Replaced by macd_norm, macd_signal_norm, macd_hist_norm
+            }
             feature_cols = [
                 c for c in df.columns
                 if c not in exclude_cols and pd.api.types.is_numeric_dtype(df[c])
@@ -164,27 +171,35 @@ class ModelTrainer:
 
     def _instantiate_model(self, model_name: str) -> Any:
         if model_name == "linear_regression":
-            return Ridge(alpha=10.0, random_state=42)
+            # Well-regularized Ridge regression to combat multicollinearity in stationary financial ratios
+            return Ridge(alpha=50.0, random_state=42)
         elif model_name == "random_forest":
+            # Shallow trees with high leaf regularization to prevent fitting noise on small time-series samples
             return RandomForestRegressor(
                 n_estimators=100,
-                max_depth=6,
-                min_samples_leaf=4,
+                max_depth=3,
+                min_samples_leaf=6,
+                max_features="sqrt",
                 random_state=42
             )
         elif model_name == "xgboost":
+            # Highly regularized shallow trees with conservative learning rate
             return XGBRegressor(
-                n_estimators=60,
-                max_depth=4,
-                learning_rate=0.05,
+                n_estimators=50,
+                max_depth=2,
+                learning_rate=0.02,
                 subsample=0.8,
+                colsample_bytree=0.8,
+                reg_alpha=1.0,
+                reg_lambda=5.0,
                 random_state=42
             )
         elif model_name in ("deep_learning_ann", "ann"):
+            # Compact regularized MLP with high weight decay to avoid overfitting noise
             return MLPRegressor(
-                hidden_layer_sizes=(32, 16),
+                hidden_layer_sizes=(8,),
                 activation="relu",
-                alpha=2.0,
+                alpha=50.0,
                 max_iter=500,
                 random_state=42,
                 early_stopping=False

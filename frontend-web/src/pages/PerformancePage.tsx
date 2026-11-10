@@ -107,8 +107,8 @@ export const PerformancePage: React.FC<Props> = ({ selectedTicker, signals }) =>
       );
     }
     return (
-      <span className="px-2 py-0.5 rounded text-[10px] bg-[#162235] text-[#94a3b8] border border-[#23354f] flex items-center gap-1 justify-center">
-        Verified
+      <span className="px-2 py-0.5 rounded text-[10px] bg-[#162235] text-[#94a3b8] border border-[#23354f] flex items-center gap-1 justify-center" title="Underperforms Naive Zero-Return Benchmark on holdout">
+        Underperforms Baseline
       </span>
     );
   };

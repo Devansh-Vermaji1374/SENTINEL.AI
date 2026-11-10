@@ -33,12 +33,23 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+settings = get_settings()
+
+# Parse configurable CORS allowlist (reject wildcard '*')
+allowed_origins = [
+    origin.strip()
+    for origin in settings.cors_allowed_origins.split(",")
+    if origin.strip() and origin.strip() != "*"
+]
+if not allowed_origins:
+    allowed_origins = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8501"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-Sentinel-Automation-Key", "X-Sentinel-Admin-Key", "Authorization"],
 )
 
 app.include_router(router, prefix="/api")

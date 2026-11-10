@@ -12,7 +12,7 @@ import re
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -101,6 +101,11 @@ class ExaNewsCollector:
                         else:
                             dt = datetime.now(timezone.utc)
 
+                        # Enforce days_back filter
+                        cutoff_dt = datetime.now(timezone.utc) - timedelta(days=days_back)
+                        if dt < cutoff_dt:
+                            continue
+
                         articles.append({
                             "ticker": ticker,
                             "title": clean_t,
@@ -159,6 +164,11 @@ class ExaNewsCollector:
                                 dt = datetime.fromtimestamp(timestamp, timezone.utc)
                         except Exception:
                             pass
+
+                    # Enforce strict 10-day lookback filter
+                    cutoff_dt = datetime.now(timezone.utc) - timedelta(days=days_back)
+                    if dt < cutoff_dt:
+                        continue
 
                     articles.append({
                         "ticker": ticker,

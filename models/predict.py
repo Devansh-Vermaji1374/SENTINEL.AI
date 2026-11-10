@@ -139,10 +139,11 @@ class Predictor:
 
         predicted_return = raw_return
 
-        # Price translation and 95% confidence bounds (±1.96 * residual_std)
+        # Price translation and uncertainty interval
         predicted_price: Optional[float] = None
         confidence_lower: Optional[float] = None
         confidence_upper: Optional[float] = None
+        interval_type = "empirical_residual_bound"
 
         if current_price is not None and current_price > 0:
             predicted_price = float(current_price * (1.0 + predicted_return))
@@ -159,6 +160,7 @@ class Predictor:
             "confidence_lower": confidence_lower,
             "confidence_upper": confidence_upper,
             "residual_std": residual_std,
+            "interval_type": interval_type,
             "direction": direction,
             "model_name": m_name,
         }

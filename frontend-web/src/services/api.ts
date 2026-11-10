@@ -14,9 +14,36 @@ import {
 const envApiUrl = import.meta.env.VITE_API_BASE_URL;
 const BASE_URL = envApiUrl ? `${envApiUrl.replace(/\/+$/, '')}/api` : '/api';
 
+// Operational session token storage (kept in-memory / sessionStorage only, never in env or build bundles)
+let sessionAdminKey: string | null = null;
+
 export const api = {
   getBaseUrl(): string {
     return BASE_URL;
+  },
+  setAdminKey(key: string | null) {
+    sessionAdminKey = key;
+    if (key) {
+      sessionStorage.setItem('sentinel_admin_key', key);
+    } else {
+      sessionStorage.removeItem('sentinel_admin_key');
+    }
+  },
+  getAdminKey(): string | null {
+    if (!sessionAdminKey) {
+      sessionAdminKey = sessionStorage.getItem('sentinel_admin_key');
+    }
+    return sessionAdminKey;
+  },
+  getAuthHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    const key = this.getAdminKey();
+    if (key) {
+      headers['X-Sentinel-Admin-Key'] = key;
+    }
+    return headers;
   },
   async getSystemStatus(): Promise<SystemStatus> {
     const res = await fetch(`${BASE_URL}/status`);
@@ -88,27 +115,62 @@ export const api = {
   },
 
   async triggerMarketCollection(ticker?: string) {
-    const res = await fetch(`${BASE_URL}/collect/market${ticker ? `?ticker=${ticker}` : ''}`, { method: 'POST' });
+    const res = await fetch(`${BASE_URL}/collect/market${ticker ? `?ticker=${ticker}` : ''}`, { 
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
     return res.json();
   },
 
   async triggerSocialCollection(ticker?: string) {
-    const res = await fetch(`${BASE_URL}/collect/social${ticker ? `?ticker=${ticker}` : ''}`, { method: 'POST' });
+    const res = await fetch(`${BASE_URL}/collect/social${ticker ? `?ticker=${ticker}` : ''}`, { 
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
     return res.json();
   },
 
   async triggerNewsCollection(ticker?: string) {
-    const res = await fetch(`${BASE_URL}/collect/news${ticker ? `?ticker=${ticker}` : ''}`, { method: 'POST' });
+    const res = await fetch(`${BASE_URL}/collect/news${ticker ? `?ticker=${ticker}` : ''}`, { 
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
     return res.json();
   },
 
   async triggerModelTraining() {
-    const res = await fetch(`${BASE_URL}/models/train`, { method: 'POST' });
+    const res = await fetch(`${BASE_URL}/models/train`, { 
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
     return res.json();
   },
 
   async triggerFullPipeline() {
-    const res = await fetch(`${BASE_URL}/collect/all`, { method: 'POST' });
+    const res = await fetch(`${BASE_URL}/collect/all`, { 
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
     return res.json();
   }
 };

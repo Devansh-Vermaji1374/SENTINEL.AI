@@ -64,21 +64,28 @@ class FeatureEngineer:
         # Simple Moving Averages
         for window in (5, 10, 20, 50):
             df[f"sma_{window}"] = close.rolling(window=window, min_periods=1).mean()
+            # Stationary price-relative moving average ratios
+            df[f"close_to_sma_{window}"] = (close - df[f"sma_{window}"]) / close
 
         # Exponential Moving Averages
         df["ema_12"] = close.ewm(span=12, adjust=False).mean()
         df["ema_26"] = close.ewm(span=26, adjust=False).mean()
+        df["close_to_ema_12"] = (close - df["ema_12"]) / close
+        df["close_to_ema_26"] = (close - df["ema_26"]) / close
 
         # RSI
         df["rsi_14"] = self._rsi(close, period=14)
 
-        # MACD
+        # MACD (normalized by close price for scale invariance)
         macd_line, signal_line, histogram = self._macd(
             close, fast=12, slow=26, signal=9
         )
         df["macd"] = macd_line
         df["macd_signal"] = signal_line
         df["macd_histogram"] = histogram
+        df["macd_norm"] = macd_line / close
+        df["macd_signal_norm"] = signal_line / close
+        df["macd_hist_norm"] = histogram / close
 
         # Bollinger Bands (20-period, 2 std)
         bb_mid = close.rolling(window=20, min_periods=1).mean()
@@ -86,6 +93,9 @@ class FeatureEngineer:
         df["bb_middle"] = bb_mid
         df["bb_upper"] = bb_mid + 2 * bb_std
         df["bb_lower"] = bb_mid - 2 * bb_std
+        # Bollinger position and width (strictly stationary)
+        df["bb_width"] = (df["bb_upper"] - df["bb_lower"]) / bb_mid.replace(0, np.nan)
+        df["bb_position"] = (close - df["bb_lower"]) / (df["bb_upper"] - df["bb_lower"]).replace(0, np.nan)
 
         # Volatility (rolling std of returns)
         df["volatility_5"] = df["daily_return"].rolling(window=5, min_periods=1).std()
@@ -301,13 +311,13 @@ class FeatureEngineer:
         last_close = close.iloc[-1]
         pivot = (last_high + last_low + last_close) / 3.0
 
-        # Local maxima (resistance candidates).
-        rolling_max = high.rolling(window=window, center=True, min_periods=1).max()
+        # Trailing local extrema (support and resistance candidates, backward-looking only to eliminate lookahead)
+        rolling_max = high.rolling(window=window, min_periods=window // 2).max()
         resistance_mask = high == rolling_max
         resistance_levels = sorted(high[resistance_mask].unique().tolist())
 
-        # Local minima (support candidates).
-        rolling_min = low.rolling(window=window, center=True, min_periods=1).min()
+        # Trailing local minima (support candidates)
+        rolling_min = low.rolling(window=window, min_periods=window // 2).min()
         support_mask = low == rolling_min
         support_levels = sorted(low[support_mask].unique().tolist())
 

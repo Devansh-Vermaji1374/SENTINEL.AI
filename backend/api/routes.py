@@ -9,7 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 import joblib
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security, Header
+from fastapi.security.api_key import APIKeyHeader
 from fastapi.responses import StreamingResponse
 import pandas as pd
 
@@ -32,6 +33,75 @@ from backend.schemas.api_schemas import (
 
 router = APIRouter()
 pipeline_service = PipelineService()
+logger = logging.getLogger(__name__)
+
+# Automation & Administrative Security
+API_KEY_HEADER = APIKeyHeader(name="X-Sentinel-Automation-Key", auto_error=False)
+ADMIN_KEY_HEADER = APIKeyHeader(name="X-Sentinel-Admin-Key", auto_error=False)
+
+def verify_automation_auth(
+    x_sentinel_key: Optional[str] = Security(API_KEY_HEADER),
+    authorization: Optional[str] = Header(None)
+) -> bool:
+    """Verify security credentials for service-to-service automated pipeline triggers (n8n, cron, external orchestrators).
+    Requires explicit environment configuration of AUTOMATION_API_KEY.
+    If unconfigured or incorrect, strictly returns HTTP 401.
+    """
+    settings = get_settings()
+    expected_key = settings.automation_api_key.strip() if settings.automation_api_key else ""
+
+    if not expected_key:
+        logger.error("Automation endpoint invoked but AUTOMATION_API_KEY is not configured in environment.")
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized: Automation authentication is not configured on the server. Set AUTOMATION_API_KEY."
+        )
+
+    # Check X-Sentinel-Automation-Key header or Bearer authorization
+    provided_key = x_sentinel_key
+    if not provided_key and authorization and authorization.startswith("Bearer "):
+        provided_key = authorization.split("Bearer ")[1].strip()
+
+    if not provided_key or provided_key != expected_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized: Valid X-Sentinel-Automation-Key header or Bearer token required for automation endpoints."
+        )
+
+    return True
+
+def verify_operations_auth(
+    x_sentinel_key: Optional[str] = Security(API_KEY_HEADER),
+    x_admin_key: Optional[str] = Security(ADMIN_KEY_HEADER),
+    authorization: Optional[str] = Header(None)
+) -> bool:
+    """Verify authorization for operations actions.
+    Accepts either:
+    1. Service automation key via X-Sentinel-Automation-Key or Bearer token, OR
+    2. Admin key via X-Sentinel-Admin-Key (configured server-side via DASHBOARD_ADMIN_KEY).
+    If neither configured or provided, returns HTTP 401 Unauthorized.
+    """
+    settings = get_settings()
+    auto_key = settings.automation_api_key.strip() if settings.automation_api_key else ""
+    admin_key = settings.dashboard_admin_key.strip() if settings.dashboard_admin_key else ""
+
+    if not auto_key and not admin_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized: Neither AUTOMATION_API_KEY nor DASHBOARD_ADMIN_KEY is configured on the server."
+        )
+
+    provided = x_admin_key or x_sentinel_key
+    if not provided and authorization and authorization.startswith("Bearer "):
+        provided = authorization.split("Bearer ")[1].strip()
+
+    if not provided or (provided != auto_key and provided != admin_key):
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized: Operation requires valid X-Sentinel-Admin-Key or X-Sentinel-Automation-Key header."
+        )
+
+    return True
 
 @router.get("/status", response_model=SystemStatusSchema)
 def get_system_status():
@@ -145,6 +215,18 @@ def get_model_performance(ticker: Optional[str] = None):
             t = data.get("ticker")
             if ticker and t and t.upper() != ticker.upper():
                 continue
+
+            metrics = data.get("metrics", {})
+            baseline = data.get("baseline_metrics", {})
+            naive = baseline.get("naive_zero", {})
+            model_mae = metrics.get("mae")
+            naive_mae = naive.get("mae")
+            data["beats_naive_baseline"] = (
+                bool(model_mae <= naive_mae)
+                if (model_mae is not None and naive_mae is not None)
+                else False
+            )
+            data["naive_mae"] = naive_mae
             results.append(data)
         except Exception as e:
             logger.warning("Error reading %s: %s", mf, e)
@@ -320,59 +402,83 @@ def get_predictions(ticker: str, limit: int = 20):
     with SessionLocal() as session:
         repo = PredictionRepository(session)
         preds = repo.get_by_ticker(ticker, limit=limit)
-        return [
-            PredictionSchema(
-                id=p.id,
-                ticker=p.ticker,
-                model_name=p.model_name,
-                origin_price=p.origin_price,
-                predicted_price=p.predicted_price,
-                predicted_return=p.predicted_return,
-                predicted_return_pct=round(p.predicted_return * 100, 2) if p.predicted_return is not None else None,
-                direction="Bullish" if (p.predicted_return or 0) > 0.001 else ("Bearish" if (p.predicted_return or 0) < -0.001 else "Neutral"),
-                actual_price=p.actual_price,
-                actual_return=p.actual_return,
-                prediction_error=p.prediction_error,
-                direction_correct=p.direction_correct,
-                confidence_lower=p.confidence_lower,
-                confidence_upper=p.confidence_upper,
-                prediction_date=p.prediction_date,
-                target_date=p.target_date,
-                settled_at=p.settled_at,
-                horizon_days=p.horizon_days if hasattr(p, "horizon_days") and p.horizon_days else 1
+        results = []
+        for p in preds:
+            persisted_status = getattr(p, "status", None)
+            if not persisted_status:
+                is_legacy = (p.origin_price is None and p.actual_price is None and p.settled_at is None)
+                status_label = "LEGACY_UNSETTLEABLE" if is_legacy else ("SETTLED" if p.settled_at else "PENDING_SETTLEMENT")
+            else:
+                status_label = persisted_status
+            results.append(
+                PredictionSchema(
+                    id=p.id,
+                    ticker=p.ticker,
+                    model_name=p.model_name,
+                    origin_price=p.origin_price,
+                    predicted_price=p.predicted_price,
+                    predicted_return=p.predicted_return,
+                    predicted_return_pct=round(p.predicted_return * 100, 2) if p.predicted_return is not None else None,
+                    direction="Bullish" if (p.predicted_return or 0) > 0.001 else ("Bearish" if (p.predicted_return or 0) < -0.001 else "Neutral"),
+                    actual_price=p.actual_price,
+                    actual_return=p.actual_return,
+                    prediction_error=p.prediction_error,
+                    direction_correct=p.direction_correct,
+                    confidence_lower=p.confidence_lower,
+                    confidence_upper=p.confidence_upper,
+                    prediction_date=p.prediction_date,
+                    target_date=p.target_date,
+                    settled_at=p.settled_at,
+                    horizon_days=p.horizon_days if hasattr(p, "horizon_days") and p.horizon_days else 1,
+                    status=status_label
+                )
             )
-            for p in preds
-        ]
+        return results
 
-# --- Collection & ML Trigger Endpoints ---
+# --- Collection & ML Trigger Endpoints (Protected by Operations / Automation Auth) ---
 
 @router.post("/collect/market", response_model=CollectionTriggerResponse)
-def trigger_market_collection(ticker: Optional[str] = None):
+def trigger_market_collection(
+    ticker: Optional[str] = None,
+    _auth: bool = Depends(verify_operations_auth)
+):
     """Trigger OHLCV collection."""
     res = pipeline_service.collect_market_data(ticker)
     return CollectionTriggerResponse(**res)
 
 @router.post("/collect/social", response_model=CollectionTriggerResponse)
-def trigger_social_collection(ticker: Optional[str] = None):
+def trigger_social_collection(
+    ticker: Optional[str] = None,
+    _auth: bool = Depends(verify_operations_auth)
+):
     """Trigger social posts collection (Apify or demo fallback)."""
     res = pipeline_service.collect_social_data(ticker)
     return CollectionTriggerResponse(**res)
 
 @router.post("/collect/news", response_model=CollectionTriggerResponse)
-def trigger_news_collection(ticker: Optional[str] = None):
+def trigger_news_collection(
+    ticker: Optional[str] = None,
+    _auth: bool = Depends(verify_operations_auth)
+):
     """Trigger news collection (Exa or demo fallback)."""
     res = pipeline_service.collect_news_data(ticker)
     return CollectionTriggerResponse(**res)
 
 @router.post("/collect/all")
-def trigger_full_pipeline():
+def trigger_full_pipeline(_auth: bool = Depends(verify_operations_auth)):
     """Trigger full end-to-end collection, sentiment and ML training pipeline."""
     return pipeline_service.run_full_pipeline()
 
 @router.post("/models/train")
-def trigger_model_training():
+def trigger_model_training(_auth: bool = Depends(verify_operations_auth)):
     """Train ML models and generate predictions."""
     return pipeline_service.train_and_predict_all()
+
+@router.post("/predictions/settle")
+def trigger_prediction_settlement(_auth: bool = Depends(verify_operations_auth)):
+    """Trigger settlement scan for pending forecasts whose target session close is now available."""
+    settled = pipeline_service.settle_predictions()
+    return {"status": "success", "settled_count": settled}
 
 @router.get("/reports/export")
 def export_reports_csv(exchange: Optional[str] = None):

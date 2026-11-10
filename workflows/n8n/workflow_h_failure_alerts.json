@@ -1,0 +1,135 @@
+{
+  "name": "Workflow H - Platform Failure & Data Staleness Alerts (SENTINEL.AI)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "e44d32a8-0008-4000-8000-000000000001",
+      "name": "Hourly Health Check Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://sentinel-backend:8000/api/status",
+        "options": {
+          "timeout": 8000
+        }
+      },
+      "id": "e44d32a8-0008-4000-8000-000000000002",
+      "name": "Check Sentinel Backend Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "value2": "healthy"
+            }
+          ]
+        }
+      },
+      "id": "e44d32a8-0008-4000-8000-000000000003",
+      "name": "Is System Healthy?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "alert_payload",
+              "value": "CRITICAL ALERT: SENTINEL.AI System Degradation Detected.\nStatus: {{ $json.status }}\nDB: {{ $json.database }}\nFinBERT: {{ $json.finbert_status }}\nModel Registry: {{ $json.model_registry_status }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e44d32a8-0008-4000-8000-000000000004",
+      "name": "Format Failure Alert",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [900, 420]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "All services healthy. No alert required."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e44d32a8-0008-4000-8000-000000000005",
+      "name": "Normal Operation",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [900, 180]
+    }
+  ],
+  "connections": {
+    "Hourly Health Check Trigger": {
+      "main": [
+        [
+          {
+            "node": "Check Sentinel Backend Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Sentinel Backend Health": {
+      "main": [
+        [
+          {
+            "node": "Is System Healthy?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is System Healthy?": {
+      "main": [
+        [
+          {
+            "node": "Normal Operation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Failure Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

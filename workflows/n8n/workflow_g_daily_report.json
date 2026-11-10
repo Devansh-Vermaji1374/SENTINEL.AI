@@ -1,0 +1,107 @@
+{
+  "name": "Workflow G - Daily Financial Intelligence Report (SENTINEL.AI)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 18 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "e44d32a7-0007-4000-8000-000000000001",
+      "name": "Cron (Daily at 18:00 Market Close)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://sentinel-backend:8000/api/market-overview",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "e44d32a7-0007-4000-8000-000000000002",
+      "name": "Fetch Market Overview & Signals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://sentinel-backend:8000/api/status",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "e44d32a7-0007-4000-8000-000000000003",
+      "name": "Fetch Platform Health & Telemetry",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "daily_report",
+              "value": "=SENTINEL.AI DAILY INTELLIGENCE REPORT\nDate: {{ new Date().toISOString() }}\nHKEX Top Signals: {{ $('Fetch Market Overview & Signals').item.json.hkex_summary || 'N/A' }}\nKRX Top Signals: {{ $('Fetch Market Overview & Signals').item.json.krx_summary || 'N/A' }}\nData Quality: {{ $('Fetch Platform Health & Telemetry').item.json.historical_bars_count }} bars, {{ $('Fetch Platform Health & Telemetry').item.json.sentiment_scores_count }} sentiments."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e44d32a7-0007-4000-8000-000000000004",
+      "name": "Format Daily Report",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [920, 300]
+    }
+  ],
+  "connections": {
+    "Cron (Daily at 18:00 Market Close)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Market Overview & Signals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Market Overview & Signals": {
+      "main": [
+        [
+          {
+            "node": "Fetch Platform Health & Telemetry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Platform Health & Telemetry": {
+      "main": [
+        [
+          {
+            "node": "Format Daily Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

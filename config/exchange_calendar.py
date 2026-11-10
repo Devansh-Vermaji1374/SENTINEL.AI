@@ -218,6 +218,30 @@ class ExchangeCalendar:
         return target_session
 
     @classmethod
+    def get_session_date_for_timestamp(cls, exchange: str, dt: datetime | date) -> date:
+        """Resolve the official exchange-local trading session calendar date for a timestamp.
+        
+        Rules:
+        - If dt is naive, it is assumed to be in UTC.
+        - Converts dt to the exchange local timezone (Asia/Hong_Kong or Asia/Seoul).
+        - If dt represents an OHLCV daily bar, yfinance marks HKEX as 00:00 HKT (16:00 UTC prior calendar day)
+          and KRX as 00:00 KST (15:00 UTC prior calendar day).
+        - By converting the UTC timestamp to exchange local timezone, 16:00 UTC (+8h) becomes 00:00 HKT next day,
+          and 15:00 UTC (+9h) becomes 00:00 KST next day.
+        - If an intraday timestamp is after session close (e.g. 17:00 HKT), the trading session for that day
+          was today's session date.
+        """
+        ex = exchange.upper()
+        tz = cls.get_timezone(ex)
+        if isinstance(dt, date) and not isinstance(dt, datetime):
+            return dt
+        if dt.tzinfo is None:
+            local_dt = dt.replace(tzinfo=timezone.utc).astimezone(tz)
+        else:
+            local_dt = dt.astimezone(tz)
+        return local_dt.date()
+
+    @classmethod
     def get_session_close_datetime(cls, exchange: str, session_date: date) -> datetime:
         """Return the exact UTC timestamp corresponding to market close of a session date."""
         ex = exchange.upper()

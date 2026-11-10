@@ -139,15 +139,14 @@ class SupportResistanceCalculator:
             )
             return {"support": [], "resistance": []}
 
-        half_w = window // 2
-
         supports: list[float] = []
         resistances: list[float] = []
 
         values = prices.values.astype(np.float64)
 
-        for i in range(half_w, len(values) - half_w):
-            local_slice = values[i - half_w : i + half_w + 1]
+        # Strictly backward-looking trailing window to eliminate temporal lookahead
+        for i in range(window - 1, len(values)):
+            local_slice = values[max(0, i - window + 1) : i + 1]
             current = values[i]
 
             if current == np.min(local_slice):

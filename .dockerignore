@@ -1,0 +1,47 @@
+# Git and VCS
+.git/
+.github/
+.gitignore
+
+# Environment & Secrets (CRITICAL)
+.env
+.env.*
+!.env.example
+
+# Local SQLite databases & sidecar files (CRITICAL)
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+sentinel.db
+sentinel_backup_*
+
+# Python caches, virtualenvs & artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node & Frontend build output
+node_modules/
+frontend-web/node_modules/
+frontend-web/dist/
+dist/
+build/
+.parcel-cache/
+
+# Large ML Weights (Mount via volume instead of image layer)
+models/finbert_weights/*.safetensors
+models/finbert_weights/*.bin
+
+# Logs & Temporary files
+*.log
+logs/
+tmp/
+temp/
+scratch/

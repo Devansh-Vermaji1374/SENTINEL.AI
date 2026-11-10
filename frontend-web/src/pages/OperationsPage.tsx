@@ -20,6 +20,8 @@ interface Props {
 
 export const OperationsPage: React.FC<Props> = ({ status, onRefreshAll }) => {
   const [runningAction, setRunningAction] = useState<string | null>(null);
+  const [adminKeyInput, setAdminKeyInput] = useState<string>(() => api.getAdminKey() || '');
+  const [isKeySaved, setIsKeySaved] = useState<boolean>(() => Boolean(api.getAdminKey()));
   const [consoleLogs, setConsoleLogs] = useState<string[]>([
     '[SYSTEM] Sentinel AI Data Operations Console initialized.',
     status 
@@ -32,6 +34,12 @@ export const OperationsPage: React.FC<Props> = ({ status, onRefreshAll }) => {
 
   const addLog = (msg: string) => {
     setConsoleLogs(prev => [msg, ...prev.slice(0, 49)]);
+  };
+
+  const handleSaveKey = () => {
+    api.setAdminKey(adminKeyInput.trim() || null);
+    setIsKeySaved(Boolean(adminKeyInput.trim()));
+    addLog(adminKeyInput.trim() ? '[AUTH] Session operator key stored.' : '[AUTH] Session operator key cleared.');
   };
 
   const handleTrigger = async (name: string, fn: () => Promise<any>) => {
@@ -58,8 +66,12 @@ export const OperationsPage: React.FC<Props> = ({ status, onRefreshAll }) => {
             <h1 className="text-xl font-bold tracking-tight text-white">
               Data Operations & Pipeline Management
             </h1>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#00e676]/10 text-[#00e676] border border-[#00e676]/30">
-              OPERATIONAL
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+              status?.database_connected 
+                ? 'bg-[#00e676]/10 text-[#00e676] border-[#00e676]/30' 
+                : 'bg-[#ffd600]/10 text-[#ffd600] border-[#ffd600]/30'
+            }`}>
+              {status?.database_connected ? 'OPERATIONAL' : 'SYSTEM STANDBY'}
             </span>
           </div>
           <p className="text-xs text-[#94a3b8] mt-1">
@@ -69,9 +81,37 @@ export const OperationsPage: React.FC<Props> = ({ status, onRefreshAll }) => {
 
         <div className="flex items-center space-x-2 text-xs font-mono">
           <span className="px-3 py-1.5 rounded bg-[#0d1522] border border-[#1d2b3f] text-[#00e676] flex items-center space-x-1.5">
-            <span className="w-2 h-2 rounded-full bg-[#00e676] animate-pulse" />
-            <span>SQLite Data Engine Online</span>
+            <span className={`w-2 h-2 rounded-full ${status?.database_connected ? 'bg-[#00e676] animate-pulse' : 'bg-[#ffd600]'}`} />
+            <span>{status?.database_connected ? 'SQLite Engine Online' : 'Connecting to DB...'}</span>
           </span>
+        </div>
+      </div>
+
+      {/* Operator Session Authentication Banner */}
+      <div className="bg-[#0b1320] border border-[#1c2a40] rounded p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center space-x-2">
+            <span className={`w-2 h-2 rounded-full ${isKeySaved ? 'bg-[#00e676]' : 'bg-[#ffd600]'}`} />
+            <h4 className="text-xs font-mono font-bold uppercase text-white">Operator Access Control</h4>
+          </div>
+          <p className="text-[11px] text-[#94a3b8] mt-0.5">
+            Privileged pipeline operations require the operator access key configured on the server.
+          </p>
+        </div>
+        <div className="flex items-center space-x-2 w-full md:w-auto">
+          <input
+            type="password"
+            value={adminKeyInput}
+            onChange={(e) => setAdminKeyInput(e.target.value)}
+            placeholder="Enter operator key..."
+            className="bg-[#070b12] border border-[#1b263b] text-white text-xs px-3 py-1.5 rounded focus:outline-none focus:border-[#00b0ff] font-mono w-full md:w-64"
+          />
+          <button
+            onClick={handleSaveKey}
+            className="px-3 py-1.5 bg-[#1b263b] hover:bg-[#253550] text-[#00b0ff] text-xs font-mono rounded transition shrink-0"
+          >
+            {isKeySaved ? 'Update' : 'Authorize'}
+          </button>
         </div>
       </div>
 

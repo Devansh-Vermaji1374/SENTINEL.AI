@@ -133,27 +133,37 @@ class PipelineService:
                         post_objs = []
                         for p in posts:
                             ts = p.get("timestamp")
-                            if not isinstance(ts, datetime):
-                                ts = datetime.now(timezone.utc)
+                            # If original publication timestamp is missing, do not substitute collection time
+                            # Posts without verified publication timestamps cannot be used in point-in-time features
+                            if ts is not None and not isinstance(ts, datetime):
+                                try:
+                                    ts = pd.to_datetime(ts).to_pydatetime()
+                                except Exception:
+                                    ts = None
 
                             post_objs.append(SocialPost(
                                 ticker=asset.ticker,
                                 platform=p.get("platform", "Financial Stream"),
                                 text=p.get("text", ""),
                                 author=p.get("author", "trader"),
-                                timestamp=ts,
+                                timestamp=ts,  # Preserved as NULL if missing from source
                                 likes=p.get("likes", 0),
                                 reposts=p.get("reposts", 0),
                                 views=p.get("views", 0),
                                 followers=p.get("followers", 0),
                                 url=p.get("url"),
-                                is_demo_data=False
+                                is_demo_data=False,
+                                collected_at=datetime.now(timezone.utc)
                             ))
                         inserted_count = post_repo.bulk_insert_dedup(post_objs)
                         total_posts += inserted_count
 
                         # Real FinBERT inference with proper post linking
                         for post in post_objs:
+                            # If post has no reliable publication timestamp, do not link to point-in-time sentiment
+                            if post.timestamp is None:
+                                continue
+
                             s_res = self.finbert.analyze(post.text)
                             w_score = s_res["confidence"] if s_res["sentiment"] == "positive" else (-s_res["confidence"] if s_res["sentiment"] == "negative" else 0.0)
 
@@ -275,10 +285,11 @@ class PipelineService:
                     "created_at": s.created_at,
                     "score": s.weighted_score,
                     "is_pos": 1 if s.sentiment == "positive" else 0,
-                    "is_neg": 1 if s.sentiment == "negative" else 0
+                    "is_neg": 1 if s.sentiment == "negative" else 0,
+                    "source_type": s.source_type
                 } for s in sent_records])
             else:
-                sent_df = pd.DataFrame(columns=["created_at", "score", "is_pos", "is_neg"])
+                sent_df = pd.DataFrame(columns=["created_at", "score", "is_pos", "is_neg", "source_type"])
 
         # Compute technical indicators
         tech_df = self.feature_engineer.compute_technical_features(md_df)
@@ -290,33 +301,44 @@ class PipelineService:
         else:
             sent_df_dt = pd.Series(dtype="datetime64[ns]")
 
-        scores, vols, pos_ratios, neg_ratios = [], [], [], []
-        window_delta = pd.to_timedelta(7, unit="D")
+        scores, social_vols, news_vols, pos_ratios, neg_ratios, has_sent = [], [], [], [], [], []
+        window_delta = pd.to_timedelta(10, unit="D")  # Strict 10-day lookback window
 
         for m_dt in md_df_dt:
             if not sent_df.empty:
                 window_start = m_dt - window_delta
+                # Strict point-in-time condition: discourse must occur on or before market bar timestamp (zero lookahead)
                 mask = (sent_df_dt <= m_dt) & (sent_df_dt >= window_start)
                 sub = sent_df[mask]
                 cnt = len(sub)
                 if cnt > 0:
                     scores.append(float(sub["score"].mean()))
-                    vols.append(cnt)
+                    soc_cnt = int((sub["source_type"] == "social").sum())
+                    nws_cnt = int((sub["source_type"] == "news").sum())
+                    social_vols.append(soc_cnt)
+                    news_vols.append(nws_cnt)
                     pos_ratios.append(float(sub["is_pos"].sum() / cnt))
                     neg_ratios.append(float(sub["is_neg"].sum() / cnt))
+                    has_sent.append(1.0)
                 else:
                     scores.append(0.0)
-                    vols.append(0)
+                    social_vols.append(0)
+                    news_vols.append(0)
                     pos_ratios.append(0.0)
                     neg_ratios.append(0.0)
+                    has_sent.append(0.0)
             else:
                 scores.append(0.0)
-                vols.append(0)
+                social_vols.append(0)
+                news_vols.append(0)
                 pos_ratios.append(0.0)
                 neg_ratios.append(0.0)
+                has_sent.append(0.0)
 
         tech_df["sentiment_score"] = scores
-        tech_df["social_volume"] = vols
+        tech_df["social_volume"] = social_vols
+        tech_df["news_volume"] = news_vols
+        tech_df["has_sentiment_data"] = has_sent
         tech_df["positive_ratio"] = pos_ratios
         tech_df["negative_ratio"] = neg_ratios
         tech_df["target_return"] = tech_df["close"].pct_change().shift(-1)
@@ -366,6 +388,7 @@ class PipelineService:
                     prediction_date=pred_timestamp,
                     target_date=target_close_dt,
                     horizon_days=1,
+                    status="PENDING_SETTLEMENT",
                     origin_price=origin_close_price,
                     predicted_price=p_price,
                     predicted_return=p_ret,
@@ -462,50 +485,62 @@ class PipelineService:
 
         Correct Quantitative Settlement Calculation:
         - Uses actual origin close price recorded at prediction creation (p.origin_price).
-        - If p.origin_price was missing in older legacy records, attempts to retrieve the actual historical close at p.prediction_date.
-        - If no verified historical bar exists at origin, marks record as legacy_unsettleable (no guessing or fabrication).
-        - Checks if target session bar exists in MarketData.
+        - If p.origin_price was missing in older legacy records, leaves as LEGACY_UNSETTLEABLE without fabricating.
+        - Resolves target trading session date using exchange local calendar (Asia/Hong_Kong or Asia/Seoul).
+        - Strictly matches the exact target trading session date against market_data.
+        - If target session bar is missing, leaves prediction as PENDING_SETTLEMENT. Never settles against a later bar.
         - Calculates actual return from origin close to target close: (actual_close - origin_close) / origin_close.
         - Calculates prediction error: abs(actual_return - predicted_return).
         - Directional Correctness: (actual_return * predicted_return) > 0 or (|actual_return| <= 0.001 and |predicted_return| <= 0.001).
-        - Idempotent: Skips already settled records (p.settled_at is not None).
+        - Persists status="SETTLED" and settled_at timestamp.
+        - Idempotent: Skips already settled records (p.settled_at is not None or p.status == 'SETTLED').
         """
         settled_count = 0
         with SessionLocal() as session:
             pending = session.query(Prediction).filter(
-                Prediction.settled_at.is_(None)
+                Prediction.settled_at.is_(None),
+                Prediction.status.in_(["PENDING_SETTLEMENT"])
             ).all()
 
             now_utc = datetime.now(timezone.utc)
 
             for p in pending:
-                target_dt = pd.to_datetime(p.target_date).date()
-                pred_dt = pd.to_datetime(p.prediction_date).date()
+                if p.settled_at is not None or p.status in ("SETTLED", "LEGACY_UNSETTLEABLE", "INVALID_TARGET_DATE"):
+                    continue  # Idempotent: prevent duplicate settlement
 
-                # Find actual outcome bar on or after target_date
-                target_bar = session.query(MarketData).filter(
-                    MarketData.ticker == p.ticker,
-                    MarketData.date >= datetime(target_dt.year, target_dt.month, target_dt.day, 0, 0, 0)
-                ).order_by(MarketData.date.asc()).first()
+                if p.origin_price is None or p.origin_price <= 0:
+                    p.status = "LEGACY_UNSETTLEABLE"
+                    continue
+
+                exchange = ExchangeCalendar.get_exchange_for_ticker(p.ticker)
+                pred_session_date = ExchangeCalendar.get_session_date_for_timestamp(exchange, p.prediction_date)
+                target_session_date = ExchangeCalendar.get_session_date_for_timestamp(exchange, p.target_date)
+
+                # Temporal integrity check: Target session must strictly occur AFTER the prediction session
+                if target_session_date <= pred_session_date:
+                    logger.warning(
+                        "Prediction %d has invalid target session (%s <= %s). Marking as INVALID_TARGET_DATE.",
+                        p.id, target_session_date, pred_session_date
+                    )
+                    p.status = "INVALID_TARGET_DATE"
+                    continue
+
+                # Query all bars for this ticker and match by exchange-local session date
+                bars = session.query(MarketData).filter(MarketData.ticker == p.ticker).all()
+                target_bar = None
+                for bar in bars:
+                    bar_session_date = ExchangeCalendar.get_session_date_for_timestamp(exchange, bar.date)
+                    if bar_session_date == target_session_date:
+                        target_bar = bar
+                        break
 
                 if not target_bar:
-                    continue  # Target market session outcome not yet available, remain unsettled
+                    # Intended target session close is not yet observed; remain strictly pending
+                    p.status = "PENDING_SETTLEMENT"
+                    continue
 
                 actual_target_close = float(target_bar.close)
-
-                # Determine actual origin close
-                if p.origin_price is not None and p.origin_price > 0:
-                    actual_origin_close = float(p.origin_price)
-                else:
-                    origin_bar = session.query(MarketData).filter(
-                        MarketData.ticker == p.ticker,
-                        MarketData.date <= datetime(pred_dt.year, pred_dt.month, pred_dt.day, 23, 59, 59)
-                    ).order_by(MarketData.date.desc()).first()
-                    actual_origin_close = float(origin_bar.close) if origin_bar else None
-
-                if actual_origin_close is None or actual_origin_close <= 0:
-                    logger.debug("Legacy prediction %s for %s cannot be settled: no valid origin price.", p.id, p.ticker)
-                    continue
+                actual_origin_close = float(p.origin_price)
 
                 # Calculate actual return from origin close to target close
                 actual_return = (actual_target_close - actual_origin_close) / actual_origin_close
@@ -519,12 +554,12 @@ class PipelineService:
                     (abs(actual_return) <= 0.001 and abs(p_return) <= 0.001)
                 )
 
-                p.origin_price = actual_origin_close
                 p.actual_price = actual_target_close
                 p.actual_return = actual_return
                 p.prediction_error = prediction_error
                 p.direction_correct = is_correct
                 p.settled_at = now_utc
+                p.status = "SETTLED"
                 settled_count += 1
 
             if settled_count > 0:

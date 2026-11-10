@@ -124,8 +124,9 @@ class ModelEvaluator:
         neutral_threshold: float = 0.001,
     ) -> Dict[str, Any]:
         """Calculate benchmark metrics for:
-        1. Naïve previous-close baseline (predicted return = 0.0).
-        2. Historical mean-return baseline (predicted return = mean(y_train)).
+        1. Naïve Zero-Return baseline (predicted return = 0.0, price remains identical).
+        2. Previous-Close baseline (identical to zero-return in return space).
+        3. Historical Mean-Return baseline (predicted return = mean(y_train)).
 
         Args:
             y_true: Actual test returns.
@@ -133,7 +134,7 @@ class ModelEvaluator:
             neutral_threshold: Threshold for neutral direction classification.
 
         Returns:
-            Dict containing 'naive_zero' metrics and 'historical_mean' metrics.
+            Dict containing 'naive_zero', 'previous_close', and 'historical_mean' metrics.
         """
         y_true = np.asarray(y_true, dtype=np.float64)
         zero_preds = np.zeros_like(y_true)
@@ -149,9 +150,12 @@ class ModelEvaluator:
 
         return {
             "naive_zero": naive_metrics,
+            "previous_close": naive_metrics,  # In percentage return space, previous close prediction is identically zero return
             "historical_mean": mean_metrics,
             "mae": naive_metrics["mae"],
             "rmse": naive_metrics["rmse"],
+            "mean_mae": mean_metrics["mae"],
+            "mean_rmse": mean_metrics["rmse"],
             "directional_accuracy": naive_metrics["directional_accuracy"],
             "r_squared": 0.0,
         }

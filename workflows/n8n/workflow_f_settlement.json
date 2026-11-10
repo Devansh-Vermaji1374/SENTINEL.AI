@@ -1,0 +1,144 @@
+{
+  "name": "Workflow F - Market Prediction Settlement (SENTINEL.AI)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 4
+            }
+          ]
+        }
+      },
+      "id": "e44d32a6-0006-4000-8000-000000000001",
+      "name": "Schedule Trigger (Post Market Close)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://sentinel-backend:8000/api/predictions/settle",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Sentinel-Automation-Key",
+              "value": "={{ $env.SENTINEL_AUTOMATION_KEY || 'sentinel-automation-secret-key' }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "e44d32a6-0006-4000-8000-000000000002",
+      "name": "Trigger Prediction Settlement Engine",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.status }}",
+              "value2": "success"
+            }
+          ]
+        }
+      },
+      "id": "e44d32a6-0006-4000-8000-000000000003",
+      "name": "Check Settlement Results",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "log_message",
+              "value": "Prediction settlement run complete. Settled predictions count: {{ $json.settled_count || 0 }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e44d32a6-0006-4000-8000-000000000004",
+      "name": "Log Settlement Result",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "error_alert",
+              "value": "Settlement trigger failed: {{ JSON.stringify($json) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e44d32a6-0006-4000-8000-000000000005",
+      "name": "Log Settlement Failure",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [900, 400]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger (Post Market Close)": {
+      "main": [
+        [
+          {
+            "node": "Trigger Prediction Settlement Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Prediction Settlement Engine": {
+      "main": [
+        [
+          {
+            "node": "Check Settlement Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Settlement Results": {
+      "main": [
+        [
+          {
+            "node": "Log Settlement Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Settlement Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
