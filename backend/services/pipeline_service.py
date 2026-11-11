@@ -5,7 +5,7 @@ Strict Point-in-Time chronological alignment with zero temporal leakage.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import pandas as pd
@@ -127,10 +127,13 @@ class PipelineService:
                     posts = self.apify_scraper.collect_for_ticker(
                         ticker=asset.ticker,
                         asset_name=asset.name,
-                        search_terms=asset.search_terms
+                        search_terms=asset.search_terms,
+                        days_back=10,
                     )
                     if posts:
                         post_objs = []
+                        cutoff = datetime.now(timezone.utc) - timedelta(days=10)
+                        now_utc = datetime.now(timezone.utc)
                         for p in posts:
                             ts = p.get("timestamp")
                             # If original publication timestamp is missing, do not substitute collection time
@@ -141,12 +144,25 @@ class PipelineService:
                                 except Exception:
                                     ts = None
 
+                            if ts is not None and ts.tzinfo is None:
+                                ts = ts.replace(tzinfo=timezone.utc)
+
+                            # Enforce production pipeline 10-day lookback cutoff and future-date filter:
+                            # Posts older than 10-day cutoff or dated in the future relative to UTC are rejected.
+                            if ts is not None and (ts < cutoff or ts > now_utc + timedelta(minutes=5)):
+                                continue
+
+                            # Database column social_posts.timestamp is NOT NULL.
+                            # Posts without a valid publication timestamp cannot be stored or aggregated.
+                            if ts is None:
+                                continue
+
                             post_objs.append(SocialPost(
                                 ticker=asset.ticker,
                                 platform=p.get("platform", "Financial Stream"),
                                 text=p.get("text", ""),
                                 author=p.get("author", "trader"),
-                                timestamp=ts,  # Preserved as NULL if missing from source
+                                timestamp=ts,
                                 likes=p.get("likes", 0),
                                 reposts=p.get("reposts", 0),
                                 views=p.get("views", 0),

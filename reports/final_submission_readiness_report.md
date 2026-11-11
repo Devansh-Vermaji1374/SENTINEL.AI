@@ -71,10 +71,14 @@ During this final reproducibility phase, all source-level repairs were verified 
 
 ## 3. Database Backup & Status Verification
 
-| Database File | Location | Integrity Check | Predictions Total | Status Breakdown |
-|---|---|---|---|---|
-| Source Database | `sentinel.db` | `ok` | 292 | 280 Legacy, 4 Pending, 8 Invalid Target Date, 0 Settled |
-| Verified Backup | `backups/sentinel_freeze_backup.db` | `ok` | 292 | 280 Legacy, 4 Pending, 8 Invalid Target Date, 0 Settled |
+| Database File | Location | Integrity Check | Market Bars | Social / News | FinBERT Scores | Predictions Total | Status Breakdown |
+|---|---|---|:---:|:---:|:---:|:---:|---|
+| Active Store | `sentinel.db` | `ok` | 1,247 | 210 / 135 | 355 | 292 | 280 Legacy, 0 Pending, 8 Invalid Target Date, 4 Settled |
+| Baseline Backup | `backups/sentinel_freeze_backup.db` | `ok` | 1,245 | 195 / 135 | 330 | 292 | 280 Legacy, 4 Pending, 8 Invalid Target Date, 0 Settled |
+| Ingest Safety Backup | `backups/sentinel_before_live_ingest_backup.db` | `ok` | 1,247 | 195 / 135 | 330 | 292 | 280 Legacy, 0 Pending, 8 Invalid Target Date, 4 Settled |
+| Timezone Fix Backup | `backups/sentinel_before_naver_tz_fix_backup.db` | `ok` | 1,247 | 210 / 135 | 355 | 292 | 280 Legacy, 0 Pending, 8 Invalid Target Date, 4 Settled |
+
+*Note on Naver Discussion Timestamps*: An audit log table `timestamp_audit_log` is maintained in `sentinel.db` recording the 9-hour KST-to-UTC conversion for IDs 275–286, proving all publication times strictly precede ingestion time (`collected_at`).
 
 ---
 
@@ -82,9 +86,9 @@ During this final reproducibility phase, all source-level repairs were verified 
 
 - **Total Predictions**: 292
   - **`LEGACY_UNSETTLEABLE`**: 280 (Early prototype runs without origin prices; kept intact without fabricating prices).
-  - **`PENDING_SETTLEMENT`**: 4 (Modern predictions for `0700.HK` generated on 2026-11-09 with verified origin price `$418.40`, awaiting unobserved target session close).
+  - **`SETTLED`**: 4 (In `sentinel.db`, modern predictions for `0700.HK` generated on 2026-11-09 with origin price `$418.40` were settled against the verified market close bar of `$417.80`, return: `-0.14%`).
+  - **`PENDING_SETTLEMENT`**: 0 in active `sentinel.db` (retained as 4 in `sentinel_freeze_backup.db`).
   - **`INVALID_TARGET_DATE`**: 8 (IDs 285–292: created on 2026-11-09 21:43 and 2026-11-10 18:09 UTC but targeted 2026-11-09 08:00 UTC; preserved with audit trail and unlinked from synthetic settlement).
-  - **`SETTLED`**: 0 (Zero settlement outcomes fabricated).
 
 ---
 
@@ -540,6 +544,26 @@ The earlier reported discrepancy between the current source database (`sentinel.
 - [x] **Known Documented Limitations**: Docker unavailable on host; live external API calls unverified to avoid costs; temporary venv blocked by Windows App Control.
 
 **Conclusion**: The project is frozen and **READY FOR SUBMISSION WITH DOCUMENTED LIMITATIONS**.
+
+
+
+
+## Assessment Evidence Correction (2026-11-11)
+
+This correction narrows earlier broad readiness statements to match the source-level evidence, newly verified tests, and saved evaluation artifacts. See [`crowdwisdom_assessment_evidence.md`](crowdwisdom_assessment_evidence.md) for the complete requirement mapping and audit details.
+
+- **Social collection & Database Reality:** The codebase implements and validates Apify request paths for assessment-listed sources: LIHKG (`claude_code_reviewer~lihkg-scraper-en`) and Naver Finance Discussion (`hgservices~naver-stock-discussion-scraper`). Using authorized credentials, live Apify scraping was verified, persisting genuine records into `sentinel.db` (`LIHKG (Apify Actor)`: 2 records, `Naver Finance (Apify Actor)`: 12 records) alongside existing StockTwits streams and receiving FinBERT sentiment scoring. URL inspection confirmed that 43 historical records from `Financial Market Wire` are news RSS articles and are treated accordingly.
+- **Active DB vs Freeze Backup Exact Differences:**
+  - Active DB (`sentinel.db`): Contains **1,247 market bars** and **292 predictions** (breakdown: 280 `LEGACY_UNSETTLEABLE`, 8 `INVALID_TARGET_DATE`, and **4 `SETTLED`** predictions [IDs 281–284 on `0700.HK` settled against historical market bar 417.80 vs origin 418.40]).
+  - Freeze Backup (`backups/sentinel_freeze_backup.db`): Contains **1,245 market bars** and **292 predictions** (breakdown: 280 `LEGACY_UNSETTLEABLE`, 8 `INVALID_TARGET_DATE`, and **4 `PENDING_SETTLEMENT`** predictions).
+  - Both databases pass SQLite `PRAGMA integrity_check` (returns `ok`) and `PRAGMA foreign_key_check` (returns 0 violations).
+- **ML Validation & Correct Chronological Split:** The training split in `models/train.py` is strictly **65% Train, 15% Validation, and 20% Untouched Holdout Test** (yielding 71–73 train, 16 val, and 21–22 test samples across the 10 assets). Zero lookahead in rolling extrema and next-period target construction (`shift(-1)`) are verified with explicit tests.
+- **Stored Performance Evidence & Hypotheses:** Among 40 saved metadata files (21–22 holdout observations per asset), model MAE is below zero-return MAE for **8/40 (20.0%)** and below historical-mean MAE for **4/40 (10.0%)**. Explanations regarding financial noise and XGBoost shrinkage toward the mean are hypotheses based on quantitative theory, as daily return variance on 21 bars has low statistical power.
+- **Configuration Parameter:** The Apify authentication token is named `APIFY_API_TOKEN` across `config/settings.py` and `.env.example`.
+- **Automated Test Suite Status:**
+  - `tests/test_pipeline.py`: **25 passed, 0 failed**.
+  - `tests/test_social_sources.py`: **11 passed, 0 failed** (covers cashtags, Reddit parsing, deduplication, lookback window, multi-source coexistence, 10-day production cutoffs, and Apify LIHKG & Naver Discussion schema dispatch/parsing).
+  - Total verified tests: **36 passed, 0 failed, 6 warnings in 10.44s** (all provider requests mocked).
 
 
 

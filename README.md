@@ -55,16 +55,16 @@ flowchart TD
 
 ### 2.1 Database & Inventory Telemetry
 The production SQLite store (`sentinel.db`) strictly holds verified market, news, and discourse records without fabricated data:
-- **Historical Market Bars**: 1,245 daily OHLCV bars across 10 tracked equities.
-- **Genuine Discourse Posts**: 195 verified financial stream messages (StockTwits cashtags, Apify streams).
+- **Historical Market Bars**: 1,247 daily OHLCV bars across 10 tracked equities.
+- **Genuine Discourse Posts**: 210 verified social and financial discourse records (153 StockTwits cashtags, 2 LIHKG Apify actor posts, 12 Naver Finance Discussion Apify actor posts, and 43 legacy financial market wire posts).
 - **Curated News Articles**: 135 verified financial news articles with publisher attribution and clean headlines.
-- **FinBERT Sentiment Inferences**: 330 point-in-time sentiment inferences with multi-class probabilities.
+- **FinBERT Sentiment Inferences**: 355 point-in-time sentiment inferences with multi-class probabilities (220 social, 135 news).
 - **Trained Model Artifacts**: 40 distinct model bundles (4 architectures $\times$ 10 equities).
 - **Prediction Forecast Records**: 292 total records persisted with explicit lifecycle statuses:
   - **280 `LEGACY_UNSETTLEABLE`**: Historical records lacking origin prices preserved transparently without fabricating prices.
-  - **4 `PENDING_SETTLEMENT`**: Modern predictions with verified origin prices awaiting target session market closes.
+  - **4 `SETTLED`**: Modern predictions with verified origin prices settled against actual historical market session bars (`0700.HK` target price: 417.80 vs origin: 418.40, return: -0.14%).
   - **8 `INVALID_TARGET_DATE`**: Early development records whose target session dates preceded forecast creation; preserved with audit trail.
-  - **0 `SETTLED`**: Zero synthetic settlement outcomes fabricated.
+  - **0 `PENDING_SETTLEMENT`**: In the active database (`sentinel.db`), all 4 eligible modern predictions have been evaluated and settled. (The baseline freeze backup `sentinel_freeze_backup.db` preserves them in `PENDING_SETTLEMENT` state with 1,245 bars).
 
 ### 2.2 Monitored Equities
 - **Hong Kong Stock Exchange (HKEX)** [Currency: HKD, Timezone: Asia/Hong_Kong, Close: 16:00 HKT (08:00 UTC)]:
@@ -194,10 +194,10 @@ Accessible at: `http://localhost:8501`
 
 ## 5. Automated Testing
 
-Run the full automated test suite covering text sanitation, feature calculation, FinBERT inference, exchange calendars, chronological splitting, model bundle loading, baseline evaluation, and prediction settlement:
+Run the full automated test suite covering text sanitation, feature calculation, FinBERT inference, exchange calendars, chronological splitting (65/15/20), model bundle loading, baseline evaluation, 10-day lookback cutoffs, and multi-source collectors:
 
 ```bash
-.\.venv\Scripts\python.exe -m pytest tests/test_pipeline.py -v
+.\.venv\Scripts\python.exe -m pytest tests/ -v
 ```
 
 ---
@@ -207,10 +207,19 @@ Run the full automated test suite covering text sanitation, feature calculation,
 1. **Unproven Live Performance**: While individual models demonstrate historical validation fits on chronological out-of-sample partitions, **live predictive performance remains unproven until sufficient genuine settled forecasts accumulate over time**. Models must never be considered proven or profitable without an extensive, audited live track record.
 2. **Prediction Records Reconciliation & Settlement Reality**:
    - Out of **292 total prediction records** currently stored in `sentinel.db`:
-     - **0 are settled** (`settled_at IS NULL` for all 292).
-     - **4 are modern pending forecasts** generated with verified market close origin prices ($P_{\text{origin}} = 418.40$ for `0700.HK`), awaiting target session outcome data.
+     - **4 are settled** (`0700.HK` predictions settled against historical market bar $P_{\text{actual}} = 417.80$ vs $P_{\text{origin}} = 418.40$, return $-0.14\%$).
      - **8 are classified as `INVALID_TARGET_DATE`** due to target sessions preceding forecast timestamps; retained for auditability.
-     - **280 are legacy development records** generated during prototype iterations prior to the origin-price tracking architecture. These records lack origin prices ($P_{\text{origin}}$ is null) and are **unsettleable**; they are safely retained in the database but will never have artificial origin or target prices fabricated.
+     - **280 are legacy development records** classified as `LEGACY_UNSETTLEABLE`, generated during prototype iterations prior to the origin-price tracking architecture. These records lack origin prices ($P_{\text{origin}}$ is null) and are safely retained in the database without fabricating artificial prices.
+   - Note on Database Snapshots:
+     - Active DB (`sentinel.db`): 1,247 market bars and 4 settled predictions (`SETTLED`).
+     - Freeze Backup (`backups/sentinel_freeze_backup.db`): 1,245 market bars and the corresponding 4 predictions pending (`PENDING_SETTLEMENT`).
+     - Both databases pass SQLite `PRAGMA integrity_check` (returns `ok`) and `PRAGMA foreign_key_check` (returns 0 violations). Neither database is modified.
 3. **Academic and Research Platform**: SENTINEL AI is designed exclusively for quantitative research, sentiment aggregation, and machine learning experimentation. It is **not** an automated trading execution system and does not constitute financial, investment, or trading advice.
 4. **Predictive Performance**: Financial time-series contain substantial non-stationary noise. Out-of-sample directional accuracy and errors reported in backtests do not guarantee future performance.
 5. **Data Freshness**: Market data ingestion depends on upstream Yahoo Finance feeds. Live trading sessions require active market data provider connectivity.
+
+## 7. Assessment Evidence & Reproducibility Notes
+
+The setup and test commands above support a local installation; they do not guarantee identical results from live market and social providers. Keep API credentials (such as `APIFY_API_TOKEN` and `EXA_API_KEY`) in ignored local `.env` files and never include them in screenshots or submission materials. Database snapshots and trained model artifacts are excluded from source control, so reproducing historical metrics requires the same documented input data and model artifacts.
+
+For a candid mapping of the CrowdWisdomTrading requirements to code and the current data snapshot—including the limits of the social-source and ML evidence—see [the assessment evidence note](reports/crowdwisdom_assessment_evidence.md). In brief, the active database (`sentinel.db`) contains 210 discourse records: 153 StockTwits posts across 6 tickers, 2 LIHKG posts for `0700.HK` collected via Apify actor `claude_code_reviewer~lihkg-scraper-en`, 12 Naver Finance Discussion posts for `005930.KS` collected via Apify actor `hgservices~naver-stock-discussion-scraper`, and 43 news articles labeled `Financial Market Wire` (which URL inspection confirmed is financial news RSS, not social). Apify actors for assessment-listed sources (LIHKG and Naver Finance Discussion) are implemented, unit-tested with offline mocks, and demonstrated with observed database records accompanied by FinBERT scores and permanent timestamp reconciliation audit logs (`timestamp_audit_log`). Neither Reddit nor StockTwits count as assessment-listed sources. Offline evaluators without live API tokens or network access cannot independently verify external Apify runs beyond the local database rows, response signatures, and offline mocked test suite. Stored holdout results beat the zero-return baseline on MAE for 8/40 models and the historical-mean MAE for 4/40 on the 65/15/20 chronological split. The per-asset holdouts contain only 21–22 observations, so these results are exploratory.
